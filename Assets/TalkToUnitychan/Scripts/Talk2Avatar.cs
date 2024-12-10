@@ -104,10 +104,7 @@ public class Talk2Avatar : MonoBehaviour
     [SerializeField, TextArea]
     string systemPrompt;
 
-    // Settings Inspector Parameter
-    [SerializeField]
-    AudioSource audioSource;  // AudioClip connections
-
+    // Settings Others Parameter
     [SerializeField]
     InputField inputField;  // User input field
 
@@ -124,22 +121,19 @@ public class Talk2Avatar : MonoBehaviour
     int sampleRate = 24000;  // Reference: https://platform.openai.com/docs/guides/text-to-speech#voice-options
     float[] audioData = new float[0];  // received audio data
     int audioPosition = 0;  // controll playing audio position
+    [SerializeField]
+    AudioSource audioSource;  // AudioClip connections
     static readonly object audioLock = new object();  // thread safe object for audio data
-
-    
-
-    private void Awake()
-    {
-        audioSource.clip = AudioClip.Create("Text2Speech", sampleRate * 2, 1, sampleRate, true, GetPcmAudio);
-        if (systemPrompt != String.Empty) 
-        {
-            completionRequest.messages.Add(new Message("system", systemPrompt));
-        }
-    }
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
+        audioSource.clip = AudioClip.Create("Text2Speech", sampleRate * 2, 1, sampleRate, true, GetPcmAudio);
+        if (systemPrompt != String.Empty)
+        {
+            completionRequest.messages.Add(new Message("system", systemPrompt));
+        }
+
         audioSource.loop = true;
         audioSource.Play();
     }
@@ -209,31 +203,6 @@ public class Talk2Avatar : MonoBehaviour
         }
     }
 
-    void GetPcmAudio(float[] requestData)  // AudioClip Callback Function
-    {
-        lock (audioLock)  // thread safe
-        {
-            if (audioPosition >= audioData.Length)  // No audio data stock
-            {
-                Array.Fill(requestData, 0.0f);
-                return;
-            }
-
-            if (audioPosition + requestData.Length > audioData.Length)  // Not enough stock of audio data.
-            {
-                var remainSize = audioData.Length - audioPosition;
-                Array.Copy(audioData, audioPosition, requestData, 0, remainSize);
-                Array.Fill<float>(requestData, 0.0f, remainSize, requestData.Length - remainSize);
-                audioPosition = audioData.Length;
-                return;
-            }
-
-            Array.Copy(audioData, audioPosition, requestData, 0, requestData.Length);  // Enough stock of audio data
-            audioPosition += requestData.Length;
-            return;
-        }
-    }
-
     IEnumerator SendCreateSpeechRequest(string text)  // Create Speech Request
     {
         var request = new CreateSpeechRequest(voice ,text);
@@ -265,7 +234,7 @@ public class Talk2Avatar : MonoBehaviour
         Debug.Log($"Convert Processing Time: {elapsedTime} ms");
     }
 
-    long ConvertAudioData(byte[] inputAudio) 
+    long ConvertAudioData(byte[] inputAudio)
     {
         Stopwatch sw = Stopwatch.StartNew();
         var audioData = new float[inputAudio.Length / 2];
@@ -275,12 +244,37 @@ public class Talk2Avatar : MonoBehaviour
             audioData[i / 2] = tmp / 32768.0f;
         }
         sw.Stop();
-        
+
         lock (audioLock)  // thread safe
         {
             this.audioData = audioData;
             audioPosition = 0;
         }
         return sw.ElapsedMilliseconds;
+    }
+
+    void GetPcmAudio(float[] requestData)  // AudioClip Callback Function
+    {
+        lock (audioLock)  // thread safe
+        {
+            if (audioPosition >= audioData.Length)  // No audio data stock
+            {
+                Array.Fill(requestData, 0.0f);
+                return;
+            }
+
+            if (audioPosition + requestData.Length > audioData.Length)  // Not enough stock of audio data.
+            {
+                var remainSize = audioData.Length - audioPosition;
+                Array.Copy(audioData, audioPosition, requestData, 0, remainSize);
+                Array.Fill<float>(requestData, 0.0f, remainSize, requestData.Length - remainSize);
+                audioPosition = audioData.Length;
+                return;
+            }
+
+            Array.Copy(audioData, audioPosition, requestData, 0, requestData.Length);  // Enough stock of audio data
+            audioPosition += requestData.Length;
+            return;
+        }
     }
 }
